@@ -80,7 +80,6 @@ if __name__ == '__main__':
     args = ArgumentParser()
     args.add_argument('--output', type=str, default='h_mab_results.json')
     args.add_argument('--seed', type=int, default=42)
-    args.add_argument('--n_steps', type=int, default=32)
     args.add_argument('--n_reps', type=int, default=5)
     args.add_argument('--scenario_set', type=str, default='sweep', choices=list(SCENARIO_SETS.keys()))
     args = args.parse_args()
@@ -90,7 +89,7 @@ if __name__ == '__main__':
 
     for scenario in tqdm(scenarios, desc='Scenarios'):
         all_results.append(run_h_mab(
-            scenario, args.n_steps,
+            scenario, scenario.n_steps,
             seed=args.seed, n_reps=args.n_reps
         ))
 

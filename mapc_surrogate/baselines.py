@@ -8,7 +8,7 @@ from mapc_research.envs.scenario_impl import *
 from reinforced_lib.agents.mab import UCB
 from tqdm import tqdm, trange
 
-from mapc_surrogate.sim import TEST_SCENARIOS, tx_to_action
+from mapc_surrogate.sim import SCENARIO_SETS, tx_to_action
 
 
 def to_python_dict(d):
@@ -82,11 +82,13 @@ if __name__ == '__main__':
     args.add_argument('--seed', type=int, default=42)
     args.add_argument('--n_steps', type=int, default=32)
     args.add_argument('--n_reps', type=int, default=5)
+    args.add_argument('--scenario_set', type=str, default='sweep', choices=list(SCENARIO_SETS.keys()))
     args = args.parse_args()
 
+    scenarios = SCENARIO_SETS[args.scenario_set]
     all_results = []
 
-    for scenario in tqdm(TEST_SCENARIOS, desc='Scenarios'):
+    for scenario in tqdm(scenarios, desc='Scenarios'):
         all_results.append(run_h_mab(
             scenario, args.n_steps,
             seed=args.seed, n_reps=args.n_reps

@@ -16,32 +16,24 @@ from mapc_surrogate.graphs import conf_to_nx, nx_to_jraph, make_batch
 from mapc_surrogate.model import SurrogateModel
 
 
-TEST_SCENARIOS = [
-    random_scenario(seed=100, d_ap=75., d_sta=8., n_ap=2, n_sta_per_ap=5, n_steps=1000, channel_width=80),
-    random_scenario(seed=101, d_ap=75., d_sta=5., n_ap=3, n_sta_per_ap=3, n_steps=1000, channel_width=80),
-    random_scenario(seed=102, d_ap=75., d_sta=5., n_ap=3, n_sta_per_ap=4, n_steps=1000, channel_width=80),
-    random_scenario(seed=103, d_ap=75., d_sta=5., n_ap=4, n_sta_per_ap=3, n_steps=2000, channel_width=80),
-    random_scenario(seed=104, d_ap=75., d_sta=4., n_ap=4, n_sta_per_ap=4, n_steps=1000, channel_width=80),
-    random_scenario(seed=105, d_ap=75., d_sta=4., n_ap=5, n_sta_per_ap=3, n_steps=3000, channel_width=80),
-    random_scenario(seed=106, d_ap=75., d_sta=8., n_ap=2, n_sta_per_ap=5, n_steps=1000, channel_width=80),
-    random_scenario(seed=107, d_ap=75., d_sta=5., n_ap=3, n_sta_per_ap=3, n_steps=1000, channel_width=80),
-    random_scenario(seed=108, d_ap=75., d_sta=5., n_ap=3, n_sta_per_ap=4, n_steps=1000, channel_width=80),
-    random_scenario(seed=109, d_ap=75., d_sta=5., n_ap=4, n_sta_per_ap=3, n_steps=2000, channel_width=80),
-    random_scenario(seed=110, d_ap=75., d_sta=4., n_ap=4, n_sta_per_ap=4, n_steps=1000, channel_width=80),
-    random_scenario(seed=111, d_ap=75., d_sta=4., n_ap=5, n_sta_per_ap=3, n_steps=3000, channel_width=80),
-    random_scenario(seed=112, d_ap=75., d_sta=8., n_ap=2, n_sta_per_ap=5, n_steps=1000, channel_width=80),
-    random_scenario(seed=113, d_ap=75., d_sta=5., n_ap=3, n_sta_per_ap=3, n_steps=1000, channel_width=80),
-    random_scenario(seed=114, d_ap=75., d_sta=5., n_ap=3, n_sta_per_ap=4, n_steps=1000, channel_width=80),
-    random_scenario(seed=115, d_ap=75., d_sta=5., n_ap=4, n_sta_per_ap=3, n_steps=2000, channel_width=80),
-    random_scenario(seed=116, d_ap=75., d_sta=4., n_ap=4, n_sta_per_ap=4, n_steps=1000, channel_width=80),
-    random_scenario(seed=117, d_ap=75., d_sta=4., n_ap=5, n_sta_per_ap=3, n_steps=3000, channel_width=80),
-    random_scenario(seed=118, d_ap=75., d_sta=8., n_ap=2, n_sta_per_ap=5, n_steps=1000, channel_width=80),
-    random_scenario(seed=119, d_ap=75., d_sta=5., n_ap=3, n_sta_per_ap=3, n_steps=1000, channel_width=80),
-    random_scenario(seed=120, d_ap=75., d_sta=5., n_ap=3, n_sta_per_ap=4, n_steps=1000, channel_width=80),
-    random_scenario(seed=121, d_ap=75., d_sta=5., n_ap=4, n_sta_per_ap=3, n_steps=2000, channel_width=80),
-    random_scenario(seed=122, d_ap=75., d_sta=4., n_ap=4, n_sta_per_ap=4, n_steps=2000, channel_width=80),
-    random_scenario(seed=123, d_ap=75., d_sta=4., n_ap=5, n_sta_per_ap=3, n_steps=3000, channel_width=80),
+SWEEP_SCENARIOS = [
+    residential_scenario(seed=100, n_steps=2000, x_apartments=2, y_apartments=2, n_sta_per_ap=4, size=10.0, channel_width=80),
 ]
+
+BOXPLOT_AP_COUNTS = range(2, 9)  # 2 to 8 APs
+BOXPLOT_N_SCENARIOS = 20
+
+BOXPLOT_SCENARIOS = [
+    random_scenario(seed=200 + n_ap * BOXPLOT_N_SCENARIOS + i, d_ap=75., d_sta=5.,
+                    n_ap=n_ap, n_sta_per_ap=4, n_steps=2000, channel_width=80, randomize=0)
+    for n_ap in BOXPLOT_AP_COUNTS
+    for i in range(BOXPLOT_N_SCENARIOS)
+]
+
+SCENARIO_SETS = {
+    'sweep': SWEEP_SCENARIOS,
+    'boxplot': BOXPLOT_SCENARIOS,
+}
 
 
 def tx_to_conf(tx, tx_power, mcs, internals=None):
@@ -205,8 +197,10 @@ if __name__ == '__main__':
     args.add_argument('--n_eval_repeats', type=int, default=5)
     args.add_argument('--n_steps', type=int, default=32)
     args.add_argument('--selection', type=str, default='top_k', choices=['top_k', 'cover'])
+    args.add_argument('--scenario_set', type=str, default='sweep', choices=list(SCENARIO_SETS.keys()))
     args = args.parse_args()
 
+    scenarios = SCENARIO_SETS[args.scenario_set]
     surrogate_fn = None
 
     if not args.use_simulator and not args.random_baseline:
@@ -224,7 +218,7 @@ if __name__ == '__main__':
 
     all_results = []
 
-    for scenario in tqdm(TEST_SCENARIOS, desc='Scenarios'):
+    for scenario in tqdm(scenarios, desc='Scenarios'):
         split_results = []
 
         for split_scenario, _ in scenario.split_scenario():

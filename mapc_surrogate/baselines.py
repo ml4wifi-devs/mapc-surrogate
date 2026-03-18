@@ -1,8 +1,16 @@
 import json
+import os
 from argparse import ArgumentParser
 
 import jax
+import jax.numpy as jnp
 import numpy as np
+import simpy
+from joblib import Parallel, delayed
+from mapc_dcf.channel import Channel
+from mapc_dcf.constants import TAU, DEFAULT_TX_POWER
+from mapc_dcf.logger import Logger
+from mapc_dcf.nodes import AccessPoint
 from mapc_mab import MapcAgentFactory
 from mapc_research.envs.scenario_impl import *
 from reinforced_lib.agents.mab import UCB
@@ -76,22 +84,87 @@ def run_h_mab(scenario, n_steps, seed=42, n_reps=5):
     return all_results
 
 
+def flatten_scenarios(scenarios):
+    scenarios_flattened = []
+    for scenario in scenarios:
+        str_repr = scenario.__str__()
+        list_of_scenarios = scenario.split_scenario()
+        for i, s in enumerate(list_of_scenarios):
+            suffix = f"_{chr(ord('a') + i)}" if len(list_of_scenarios) > 1 else ""
+            scenarios_flattened.append((s[0], s[1], f"{str_repr}{suffix}"))
+    return scenarios_flattened
+
+
+def run_dcf_single(key, run, scenario, sim_time, logger):
+    key, key_channel = jax.random.split(key)
+    des_env = simpy.Environment()
+    channel = Channel(key_channel, False, scenario.channel_width, scenario.pos, scenario.walls)
+    aps: dict[int, AccessPoint] = {}
+
+    for ap in scenario.associations:
+        key, key_ap = jax.random.split(key)
+        clients = jnp.array(scenario.associations[ap])
+        aps[ap] = AccessPoint(key_ap, ap, scenario.pos, DEFAULT_TX_POWER, clients, channel, des_env, logger)
+        aps[ap].start_operation(run)
+
+    des_env.run(until=(logger.warmup_length + sim_time))
+    logger.dump_acumulators(run)
+    del des_env
+
+
+def run_dcf(scenarios, seed, n_runs, warmup, output_dir):
+    scenarios = flatten_scenarios(scenarios)
+    key = jax.random.PRNGKey(seed)
+    sim_time = scenarios[0][0].n_steps * TAU
+
+    os.makedirs(output_dir, exist_ok=True)
+    all_results = []
+
+    for scenario, _, scenario_name in tqdm(scenarios, desc='DCF Scenarios'):
+        results_path = os.path.join(output_dir, scenario_name)
+        logger = Logger(sim_time, warmup, results_path)
+        Parallel(n_jobs=n_runs)(
+            delayed(run_dcf_single)(k, r, scenario, sim_time, logger)
+            for k, r in zip(jax.random.split(key, n_runs), range(1, n_runs + 1))
+        )
+        logger.shutdown({
+            "name": scenario_name,
+            "simulation_length": sim_time,
+            "warmup_length": warmup,
+            "n_runs": n_runs
+        })
+
+        with open(results_path + '.json') as f:
+            results = json.load(f)
+        all_results.append(results['DataRate']['Data'])
+
+    return all_results
+
+
 if __name__ == '__main__':
     args = ArgumentParser()
-    args.add_argument('--output', type=str, default='h_mab_results.json')
+    args.add_argument('--output', type=str, default='baseline_results.json')
     args.add_argument('--seed', type=int, default=42)
     args.add_argument('--n_reps', type=int, default=5)
+    args.add_argument('--agent', type=str, default='h_mab', choices=['h_mab', 'dcf'])
     args.add_argument('--scenario_set', type=str, default='sweep', choices=list(SCENARIO_SETS.keys()))
     args = args.parse_args()
 
     scenarios = SCENARIO_SETS[args.scenario_set]
-    all_results = []
 
-    for scenario in tqdm(scenarios, desc='Scenarios'):
-        all_results.append(run_h_mab(
-            scenario, scenario.n_steps,
-            seed=args.seed, n_reps=args.n_reps
-        ))
+    if args.agent == 'h_mab':
+        all_results = []
+        for scenario in tqdm(scenarios, desc='H-MAB Scenarios'):
+            all_results.append(run_h_mab(
+                scenario, scenario.n_steps,
+                seed=args.seed, n_reps=args.n_reps
+            ))
+        with open(args.output, 'w') as file:
+            json.dump(to_serializable(all_results), file)
 
-    with open(args.output, 'w') as file:
-        json.dump(to_serializable(all_results), file)
+    elif args.agent == 'dcf':
+        output_dir = os.path.dirname(args.output) or '.'
+        dcf_dir = os.path.join(output_dir, 'dcf_results')
+        all_results = run_dcf(scenarios, args.seed, args.n_reps, 0.1, dcf_dir)
+        with open(args.output, 'w') as file:
+            json.dump(all_results, file)

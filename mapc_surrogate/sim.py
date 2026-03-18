@@ -25,7 +25,7 @@ BOXPLOT_N_SCENARIOS = 20
 
 BOXPLOT_SCENARIOS = [
     random_scenario(seed=200 + n_ap * BOXPLOT_N_SCENARIOS + i, d_ap=75., d_sta=5.,
-                    n_ap=n_ap, n_sta_per_ap=4, n_steps=2000, channel_width=80, randomize=0)
+                    n_ap=n_ap, n_sta_per_ap=4, n_steps=2000, channel_width=80, randomize=False)
     for n_ap in BOXPLOT_AP_COUNTS
     for i in range(BOXPLOT_N_SCENARIOS)
 ]

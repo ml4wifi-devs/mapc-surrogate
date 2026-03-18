@@ -1,0 +1,37 @@
+[project]
+name = "mapc-surrogate"
+version = "0.1.0"
+description = "Surrogate model is all you need for multi-AP coordination"
+
+readme = "README.md"
+license = {file = "LICENSE"}
+keywords = []
+
+authors = [
+  {name = "Maksymilian Wojnar", email = "maksymilian.wojnar@agh.edu.pl"}
+]
+
+requires-python = ">=3.12"
+dependencies = [
+    "hydra-core~=1.3.2",
+    "jax-ai-stack~=2025.10.28",
+    "jraph~=0.0.6.dev0",
+    "lz4~=4.4.4",
+    "mapc_optimal_research@git+https://github.com/ml4wifi-devs/mapc-optimal-research",
+    "matplotlib~=3.10.7",
+    "networkx~=3.5",
+    "tqdm~=4.67.1",
+    "wandb~=0.22.3",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "jax[cuda12-local]",
+]
+
+[tool.setuptools.packages]
+find = {}
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

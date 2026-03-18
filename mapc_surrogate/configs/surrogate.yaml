@@ -1,0 +1,11 @@
+defaults:
+  - _self_
+  - model: base
+  - optimizer: base
+  - train: base
+name: surrogate_base
+train_dataset_path: 'datasets/random_dataset.pkl.lz4'
+val_dataset_path: 'datasets/random_val_dataset.pkl.lz4'
+hydra:
+  run:
+    dir: ./runs/${name}/${now:%Y-%m-%d}/${now:%H-%M-%S}

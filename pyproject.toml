@@ -1,7 +1,7 @@
 [project]
 name = "mapc-surrogate"
 version = "0.1.0"
-description = "Surrogate model is all you need for multi-AP coordination"
+description = "A Surrogate Model is All You Need for Multi-AP Coordination"
 
 readme = "README.md"
 license = {file = "LICENSE"}

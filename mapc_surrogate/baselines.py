@@ -123,7 +123,7 @@ def run_dcf(scenarios, seed, n_runs, warmup, output_dir):
     for scenario, _, scenario_name in tqdm(scenarios, desc='DCF Scenarios'):
         results_path = os.path.join(output_dir, scenario_name)
         logger = Logger(sim_time, warmup, results_path)
-        Parallel(n_jobs=n_runs)(
+        Parallel(n_jobs=min(n_runs, 16))(
             delayed(run_dcf_single)(k, r, scenario, sim_time, logger)
             for k, r in zip(jax.random.split(key, n_runs), range(1, n_runs + 1))
         )
@@ -145,7 +145,7 @@ if __name__ == '__main__':
     args = ArgumentParser()
     args.add_argument('--output', type=str, default='baseline_results.json')
     args.add_argument('--seed', type=int, default=42)
-    args.add_argument('--n_reps', type=int, default=5)
+    args.add_argument('--n_reps', type=int, default=32)
     args.add_argument('--agent', type=str, default='h_mab', choices=['h_mab', 'dcf'])
     args.add_argument('--scenario_set', type=str, default='sweep', choices=list(SCENARIO_SETS.keys()))
     args = args.parse_args()
@@ -155,10 +155,7 @@ if __name__ == '__main__':
     if args.agent == 'h_mab':
         all_results = []
         for scenario in tqdm(scenarios, desc='H-MAB Scenarios'):
-            all_results.append(run_h_mab(
-                scenario, scenario.n_steps,
-                seed=args.seed, n_reps=args.n_reps
-            ))
+            all_results.append(run_h_mab(scenario, scenario.n_steps, args.seed, args.n_reps))
         with open(args.output, 'w') as file:
             json.dump(to_serializable(all_results), file)
 

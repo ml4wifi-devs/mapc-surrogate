@@ -17,7 +17,7 @@ from mapc_surrogate.model import SurrogateModel
 
 
 SWEEP_SCENARIOS = [
-    residential_scenario(seed=100, n_steps=2000, x_apartments=2, y_apartments=2, n_sta_per_ap=4, size=10.0, channel_width=80),
+    residential_scenario(seed=20, n_steps=2000, x_apartments=2, y_apartments=2, n_sta_per_ap=4, size=10.0, channel_width=80),
 ]
 
 BOXPLOT_AP_COUNTS = range(2, 17, 2)

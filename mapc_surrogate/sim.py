@@ -130,7 +130,7 @@ def run_scenario(
 
         # Score candidates
         if random_baseline:
-            key, perm_key = jax.random.split(key)
+            perm_key = candidate_sim_keys[0]
             random_indices = jax.random.permutation(perm_key, n_samples_eval)[:top_k]
             selected = [(int(idx), 0.0) for idx in random_indices]
         else:

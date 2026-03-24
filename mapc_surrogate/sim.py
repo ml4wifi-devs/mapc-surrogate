@@ -114,11 +114,13 @@ def run_scenario(
         # Draw N random configurations and build graphs
         candidate_txs = []
         candidate_graphs = []
+        candidate_sim_keys = []
 
         for _ in range(n_samples_eval):
             key, tx_key, sim_key = jax.random.split(key, 3)
             tx, tx_power, mcs = random_tx(tx_key, scenario)
             candidate_txs.append((tx, tx_power, mcs))
+            candidate_sim_keys.append(sim_key)
 
             if not random_baseline:
                 conf = tx_to_conf(tx, tx_power, mcs)
@@ -135,9 +137,8 @@ def run_scenario(
             all_scores = []
 
             if use_simulator:
-                for tx in candidate_txs:
-                    key, sim_key = jax.random.split(key)
-                    data_rate, _, _ = scenario(sim_key, *tx, return_internals=True)
+                for i, tx in enumerate(candidate_txs):
+                    data_rate, _, _ = scenario(candidate_sim_keys[i], *tx, return_internals=True)
                     all_scores.append(data_rate.item())
             else:
                 for i in range(0, len(candidate_graphs), batch_size):

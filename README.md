@@ -1,6 +1,6 @@
-# A Surrogate Model is All You Need for Multi-AP Coordination
+# A Surrogate Model is All You Need for Coordinated Spatial Reuse
 
-We propose a simple yet effective approach to coordinated spatial reuse (Co-SR) scheduling in IEEE 802.11bn (Wi-Fi 8) networks: **draw *N* random configurations, score each with a GNN surrogate model, and select the best ones**. No reinforcement learning, no generative model, no iterative optimization — just a single forward pass through a lightweight graph neural network.
+We propose a simple yet effective approach to coordinated spatial reuse (Co-SR) scheduling in IEEE 802.11bn (Wi-Fi 8) networks: **draw *N* random configurations, score each with a surrogate model, and select the best ones**. No reinforcement learning, no generative model, no iterative optimization — just a single forward pass through a lightweight graph neural network.
 
 <p align="center">
   <img src="pipeline.png" alt="Inference pipeline" width="600"/>
@@ -79,7 +79,7 @@ mapc_surrogate/
 
 ```bibtex
 @article{wojnar2026surrogate,
-  title={A Surrogate Model is All You Need for Multi-AP Coordination},
+  title={A Surrogate Model is All You Need for Coordinated Spatial Reuse},
   author={Wojnar, Maksymilian},
   year={2026}
 }

@@ -56,7 +56,7 @@ class Transformer(nn.Module):
 
     @nn.compact
     def __call__(self, x, mask=None, training=True):
-        x = nn.Dense(self.dim, dtype=self.dtype, use_bias=False)(x)
+        x = nn.Dense(self.dim, dtype=self.dtype)(x)
 
         for _ in range(self.n_layers):
             x = TransformerBlock(self.n_heads, self.ff_dim, self.drop_rate, self.dtype)(x, mask=mask, training=training)
@@ -112,8 +112,8 @@ class SurrogateModel(nn.Module):
         node_segment_ids = compute_segment_ids(x.n_node, x.nodes.shape[0])
         global_segment_ids = jnp.arange(x.n_node.shape[0])
 
-        for _ in range(self.gnn_layers):
-            x = jraph.GraphNetwork(
+        for i in range(self.gnn_layers):
+            x_new = jraph.GraphNetwork(
                 update_edge_fn=transformer_fn(edge_segment_ids),
                 update_node_fn=transformer_fn(node_segment_ids),
                 update_global_fn=transformer_fn(global_segment_ids),
@@ -121,6 +121,14 @@ class SurrogateModel(nn.Module):
                 aggregate_nodes_for_globals_fn=segment_mean,
                 aggregate_edges_for_globals_fn=segment_mean
             )(x)
+            if i > 0:
+                x = x_new._replace(
+                    nodes=x_new.nodes + x.nodes,
+                    edges=x_new.edges + x.edges,
+                    globals=x_new.globals + x.globals,
+                )
+            else:
+                x = x_new
 
         x = jraph.GraphMapFeatures(embed_global_fn=make_embed_fn(self.n_components * 3, self.dtype))(x)
 

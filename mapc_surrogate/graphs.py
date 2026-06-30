@@ -10,8 +10,8 @@ from mapc_sim.constants import DEFAULT_TX_POWER
 from mapc_surrogate.attributes import *
 
 
-RATE_MEAN = 657.2
-RATE_STD = 462.2
+RATE_MEAN = 251.7
+RATE_STD = 258.0
 
 CCA_THRESHOLD = -82.0
 RSSI_MEAN = -51.6

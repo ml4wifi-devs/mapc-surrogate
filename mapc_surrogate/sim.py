@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import orbax.checkpoint as ocp
 from mapc_research.envs.scenario_impl import *
+from mapc_sim.constants import DEFAULT_NAKAGAMI_M, DEFAULT_NAKAGAMI_SIGMA
 from omegaconf import OmegaConf
 from tqdm import tqdm, trange
 
@@ -17,15 +18,20 @@ from mapc_surrogate.model import SurrogateModel
 
 
 SWEEP_SCENARIOS = [
-    residential_scenario(seed=20, n_steps=2000, x_apartments=2, y_apartments=2, n_sta_per_ap=4, size=10.0, channel_width=80),
+    residential_scenario(
+        seed=20, n_steps=2000, x_apartments=2, y_apartments=2, n_sta_per_ap=4, size=10.0, 
+        channel_width=80, nakagami_m=DEFAULT_NAKAGAMI_M, sigma=DEFAULT_NAKAGAMI_SIGMA
+    ),
 ]
 
 BOXPLOT_AP_COUNTS = range(2, 17, 2)
-BOXPLOT_N_SCENARIOS = 20
+BOXPLOT_N_SCENARIOS = 10
 
 BOXPLOT_SCENARIOS = [
-    random_scenario(seed=200 + n_ap * BOXPLOT_N_SCENARIOS + i, d_ap=75., d_sta=5.,
-                    n_ap=n_ap, n_sta_per_ap=4, n_steps=2000, channel_width=80, randomize=False)
+    random_scenario(
+        seed=200 + n_ap * BOXPLOT_N_SCENARIOS + i, n_steps=2000, d_ap=75., d_sta=5., n_ap=n_ap, n_sta_per_ap=4, 
+        channel_width=80, nakagami_m=DEFAULT_NAKAGAMI_M, sigma=DEFAULT_NAKAGAMI_SIGMA, randomize=False
+    )
     for n_ap in BOXPLOT_AP_COUNTS
     for i in range(BOXPLOT_N_SCENARIOS)
 ]
@@ -36,18 +42,11 @@ SCENARIO_SETS = {
 }
 
 
-def tx_to_conf(tx, tx_power, mcs, internals=None):
+def tx_to_conf(tx, tx_power, mcs):
     ap, sta = np.where(tx)
     mcs_list = [mcs[a].item() for a in ap]
     tx_power_list = [tx_power[a].item() for a in ap]
-
-    if internals is not None:
-        succ_prob = (internals.frames_transmitted / np.maximum(internals.ampdu_size, 1))
-        succ_prob_list = [succ_prob[a].item() for a in ap]
-    else:
-        succ_prob_list = [0.0 for _ in ap]
-
-    return Configuration([TxPair(a, s, m, t, p) for a, s, m, t, p in zip(ap, sta, mcs_list, tx_power_list, succ_prob_list)])
+    return Configuration([TxPair(a, s, m, t) for a, s, m, t in zip(ap, sta, mcs_list, tx_power_list)])
 
 
 def tx_to_action(associations, internals, tx, tx_power, mcs):
@@ -104,7 +103,7 @@ def select_cover_stations(scores, candidate_txs, associations):
 
 def run_scenario(
         scenario, n_steps, n_samples_eval, seed, ideal_mcs,
-        surrogate_fn, batch_size, use_simulator, random_baseline, top_k, n_eval_repeats,
+        surrogate_fn, batch_size, use_simulator, random_baseline, top_k,
         selection='top_k'
 ):
     key = jax.random.PRNGKey(seed)
@@ -157,26 +156,19 @@ def run_scenario(
 
         for idx, score in selected:
             eval_tx = candidate_txs[idx]
-            repeats = []
+            key, scenario_key = jax.random.split(key)
 
-            for _ in range(n_eval_repeats):
-                key, scenario_key = jax.random.split(key)
-
-                if ideal_mcs:
-                    tx_mat, tx_power, _ = eval_tx
-                    data_rate, _, internals = scenario(scenario_key, tx_mat, tx_power, return_internals=True)
-                    eval_tx = (tx_mat, tx_power, internals.mcs)
-                else:
-                    data_rate, _, internals = scenario(scenario_key, *eval_tx, return_internals=True)
-
-                repeats.append({
-                    'data_rate': data_rate.item(),
-                    'action': tx_to_action(scenario.associations, internals, *eval_tx)
-                })
+            if ideal_mcs:
+                tx_mat, tx_power, _ = eval_tx
+                data_rate, _, internals = scenario(scenario_key, tx_mat, tx_power, return_internals=True)
+                eval_tx = (tx_mat, tx_power, internals.mcs)
+            else:
+                data_rate, _, internals = scenario(scenario_key, *eval_tx, return_internals=True)
 
             results.append({
                 'score': score,
-                'runs': repeats
+                'data_rate': data_rate.item(),
+                'action': tx_to_action(scenario.associations, internals, *eval_tx)
             })
 
         all_results.append({'configs': results})
@@ -195,7 +187,6 @@ if __name__ == '__main__':
     args.add_argument('--output', type=str, default='sim_results.json')
     args.add_argument('--seed', type=int, default=42)
     args.add_argument('--top_k', type=int, default=1)
-    args.add_argument('--n_eval_repeats', type=int, default=5)
     args.add_argument('--n_steps', type=int, default=32)
     args.add_argument('--selection', type=str, default='top_k', choices=['top_k', 'cover'])
     args.add_argument('--scenario_set', type=str, default='sweep', choices=list(SCENARIO_SETS.keys()))
@@ -226,7 +217,7 @@ if __name__ == '__main__':
             split_results.append([run_scenario(
                 split_scenario, args.n_steps, args.n_samples_eval,
                 args.seed, args.ideal_mcs, surrogate_fn, args.batch_size,
-                args.use_simulator, args.random_baseline, args.top_k, args.n_eval_repeats,
+                args.use_simulator, args.random_baseline, args.top_k,
                 selection=args.selection
             )])
 

@@ -145,7 +145,7 @@ if __name__ == '__main__':
     args = ArgumentParser()
     args.add_argument('--output', type=str, default='baseline_results.json')
     args.add_argument('--seed', type=int, default=42)
-    args.add_argument('--n_reps', type=int, default=32)
+    args.add_argument('--n_reps', type=int, default=64)
     args.add_argument('--agent', type=str, default='h_mab', choices=['h_mab', 'dcf'])
     args.add_argument('--scenario_set', type=str, default='sweep', choices=list(SCENARIO_SETS.keys()))
     args = args.parse_args()

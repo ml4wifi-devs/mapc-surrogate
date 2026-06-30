@@ -1,3 +1,4 @@
+import inspect
 import os
 from dataclasses import dataclass
 
@@ -6,60 +7,27 @@ import jax
 import lz4.frame
 import numpy as np
 import jax.numpy as jnp
-from mapc_sim.constants import DEFAULT_TX_POWER, DATA_RATES
+from mapc_sim.constants import DEFAULT_TX_POWER, DATA_RATES, DEFAULT_NAKAGAMI_M, DEFAULT_NAKAGAMI_SIGMA
 from mapc_research.envs.scenario import Scenario
 from mapc_research.envs.scenario_impl import *
 from tqdm import tqdm
 
 from mapc_surrogate.attributes import *
-from mapc_surrogate.graphs import RATE_MEAN, RATE_STD, conf_to_nx, nx_to_jraph, make_batch
+from mapc_surrogate.graphs import conf_to_nx, nx_to_jraph, make_batch
 
 
 SCENARIOS = [
-    (
-        toy_scenario_1,
-        {'d': (10, 31)}
-    ),
-    (
-        toy_scenario_2,
-        {'d_ap': (10, 31), 'd_sta': (1, 11)}
-    ),
-    (
-        small_office_scenario,
-        {'d_ap': (10, 21), 'd_sta': (1, 11)}
-    ),
-    (
-        random_scenario,
-        {'d_ap': (20, 101), 'n_ap': (2, 11), 'd_sta': (1, 9), 'n_sta_per_ap': (1, 6), 'randomize': (0, 1)}
-    ),
-    (
-        residential_scenario,
-        {'x_apartments': (2, 6), 'y_apartments': (2, 3), 'n_sta_per_ap': (1, 5), 'size': (5, 21)}
-    ),
-    (
-        hidden_station_scenario,
-        {'d': (21, 51)}
-    ),
-    (
-        flow_in_the_middle_scenario,
-        {'d': (1, 31)}
-    ),
-    (
-        dense_point_scenario,
-        {'n_ap': (2, 11), 'n_associations': (1, 6)}
-    ),
-    (
-        spatial_reuse_scenario,
-        {'d_ap': (10, 21), 'd_sta': (1, 11)}
-    ),
-    (
-        test_scenario,
-        {'scale': (10, 31)}
-    ),
-    (
-        indoor_small_bsss_scenario,
-        {'grid_layers': (3, 4), 'n_sta_per_ap': (3, 11), 'frequency_reuse': (3, 4), 'bss_radius': (5, 21)}
-    ),
+    (toy_scenario_1,              {'d': (10, 31)},                                                                                    0.5),
+    (toy_scenario_2,              {'d_ap': (10, 31), 'd_sta': (1, 11)},                                                               1.0),
+    (small_office_scenario,       {'d_ap': (10, 21), 'd_sta': (1, 11)},                                                               1.0),
+    (random_scenario,             {'d_ap': (20, 101), 'n_ap': (2, 7), 'd_sta': (1, 9), 'n_sta_per_ap': (1, 6), 'randomize': (0, 1)},  2.0),
+    (symm_residential_scenario,   {'x_apartments': (2, 6), 'y_apartments': (2, 3), 'n_sta_per_ap': (1, 5), 'size': (5, 21)},          2.0),
+    (hidden_station_scenario,     {'d': (21, 51)},                                                                                    0.5),
+    (flow_in_the_middle_scenario, {'d': (1, 31)},                                                                                     1.0),
+    (dense_point_scenario,        {'n_ap': (2, 11), 'n_associations': (1, 6)},                                                        2.5),
+    (spatial_reuse_scenario,      {'d_ap': (10, 21), 'd_sta': (1, 11)},                                                               0.5),
+    (test_scenario,               {'scale': (10, 31)},                                                                                0.5),
+    (indoor_small_bsss_scenario,  {'grid_layers': (3, 4), 'n_sta_per_ap': (3, 11), 'frequency_reuse': (3, 4), 'bss_radius': (5, 21)}, 2.0),
 ]
 
 
@@ -69,7 +37,6 @@ class TxPair:
     sta: int
     mcs: int
     tx_power: int
-    success: float
 
 
 @dataclass
@@ -87,14 +54,6 @@ N_TX_POWER_LEVELS = 4
 TX_POWER_DELTA = 3.0
 TX_POWER_LEVELS = np.array([DEFAULT_TX_POWER - i * TX_POWER_DELTA for i in range(N_TX_POWER_LEVELS)])
 MCS_VALUES = DATA_RATES[80]
-
-
-def rate_to_mcs(rate):
-    return (np.abs(MCS_VALUES - rate)).argmin().item()
-
-
-def tx_power_to_lvl(tx_power):
-    return (np.abs(TX_POWER_LEVELS - tx_power)).argmin().item()
 
 
 def save_dataset(dataset, path):
@@ -136,78 +95,111 @@ def random_tx(key, scenario):
     return tx, tx_power, mcs
 
 
+DEFAULT_SCENARIO_PARAMS = {
+    'channel_width': 80,
+    'n_steps': 2000,
+    'sigma': DEFAULT_NAKAGAMI_SIGMA,
+    'nakagami_m': DEFAULT_NAKAGAMI_M,
+}
+
+
 def draw_realizations(key, scenario_fn, param_ranges):
     *param_keys, seed_key = jax.random.split(key, len(param_ranges) + 1)
     params = {p: jax.random.randint(k, (), *v) for (p, v), k in zip(param_ranges.items(), param_keys)}
     seed = jax.random.randint(seed_key, (), 0, 2**30)
-    (scenario, _), *_ = scenario_fn(seed=seed, channel_width=80, **params).split_scenario()
+    sig = inspect.signature(scenario_fn).parameters
+    call_kwargs = {**DEFAULT_SCENARIO_PARAMS, **params}
+    if 'seed' in sig:
+        call_kwargs['seed'] = seed
+    (scenario, _), *_ = scenario_fn(**call_kwargs).split_scenario()
     yield DatasetItem(scenario, configurations=[])
 
 
 def draw_scenarios(n_realizations, key, scenarios):
-    n_params = list(map(len, [p for _, p in scenarios]))
-    n_params = np.asarray(n_params)
-    probs = n_params / n_params.sum()
+    weights = np.asarray([w for _, _, w in scenarios], dtype=float)
+    probs = weights / weights.sum()
 
     key, subkey = jax.random.split(key)
     scenario_idx = jax.random.choice(subkey, len(scenarios), p=probs, shape=(n_realizations,)).tolist()
     selected_scenarios = [scenarios[i] for i in scenario_idx]
 
-    for scenario, param_ranges in tqdm(selected_scenarios, desc='Scenarios'):
+    for scenario, param_ranges, _ in tqdm(selected_scenarios, desc='Scenarios'):
         key, subkey = jax.random.split(key)
         yield from draw_realizations(subkey, scenario, param_ranges)
 
 
-def draw_configuration(n_configurations, key, dataset_item):
-    for _ in range(n_configurations):
-        key, random_key, scenario_key = jax.random.split(key, 3)
-        tx, tx_power, mcs = random_tx(random_key, dataset_item.scenario)
-        _, _, internals = dataset_item.scenario(scenario_key, tx, tx_power, mcs, return_internals=True)
-        succ_prob = (internals.frames_transmitted / np.maximum(internals.ampdu_size, 1))
+N_SIM_REPEATS = 3
+N_RANDOM_CONFIGS = 40
+N_IDEAL_MCS_CONFIGS = 10
+
+
+def _avg_rate(key, scenario, tx, tx_power, mcs):
+    rates = []
+    for _ in range(N_SIM_REPEATS):
+        key, scenario_key = jax.random.split(key)
+        data_rate, _, _ = scenario(scenario_key, tx, tx_power, mcs, return_internals=True)
+        rates.append(data_rate.item())
+    return key, float(np.mean(rates))
+
+
+def draw_configuration(key, dataset_item):
+    scenario = dataset_item.scenario
+
+    for _ in range(N_RANDOM_CONFIGS):
+        key, random_key = jax.random.split(key)
+        tx, tx_power, mcs = random_tx(random_key, scenario)
         ap, sta = np.where(tx)
-        mcs_list = [mcs[a].item() for a in ap]
-        tx_power_list = [tx_power[a].item() for a in ap]
-        succ_prob_list = [succ_prob[a].item() for a in ap]
-        yield Configuration([TxPair(a, s, m, t, p) for a, s, m, t, p in zip(ap, sta, mcs_list, tx_power_list, succ_prob_list)])
+        conf = Configuration([TxPair(a, s, mcs[a].item(), tx_power[a].item()) for a, s in zip(ap, sta)])
+        key, rate = _avg_rate(key, scenario, tx, tx_power, mcs)
+        yield conf, rate
+
+    for _ in range(N_IDEAL_MCS_CONFIGS):
+        key, random_key, ideal_key = jax.random.split(key, 3)
+        tx, tx_power, _ = random_tx(random_key, scenario)
+        _, _, internals = scenario(ideal_key, tx, tx_power, return_internals=True)
+        mcs = internals.mcs
+        ap, sta = np.where(tx)
+        conf = Configuration([TxPair(a, s, mcs[a].item(), tx_power[a].item()) for a, s in zip(ap, sta)])
+        key, rate = _avg_rate(key, scenario, tx, tx_power, mcs)
+        yield conf, rate
 
 
-def draw_history(n_configurations, key, dataset):
+def draw_history(key, dataset):
     for dataset_item in tqdm(dataset, desc='Configurations'):
         key, subkey = jax.random.split(key)
-        dataset_item.configurations = list(draw_configuration(n_configurations, subkey, dataset_item))
-
+        dataset_item.configurations = list(draw_configuration(subkey, dataset_item))
     return dataset
 
 
-def calculate_data_rate(configuration):
-    """Calculate data rate directly from a Configuration's TxPair links."""
-    return sum(MCS_VALUES[link.mcs] * link.success for link in configuration.links)
-
-
-def generate_dataset(seed, n_realizations, n_configurations, save_path, batch_size=32):
+def generate_dataset(seed, n_realizations, save_path, batch_size=32):
     key = jax.random.PRNGKey(seed)
     scenarios_key, configurations_key = jax.random.split(key)
 
     dataset = list(draw_scenarios(n_realizations, scenarios_key, SCENARIOS))
-    dataset = draw_history(n_configurations, configurations_key, dataset)
+    dataset = draw_history(configurations_key, dataset)
 
-    # Convert to (graph, rate) pairs
+    # Collect raw (graph, rate) pairs
     graph_rate_pairs = []
     for item in tqdm(dataset, desc='Converting to graphs'):
-        for conf in item.configurations:
-            rate = calculate_data_rate(conf)
-            rate = (rate - RATE_MEAN) / RATE_STD
+        for conf, rate in item.configurations:
             G = conf_to_nx(item.scenario, conf)
             graph = nx_to_jraph(G)
             graph_rate_pairs.append((graph, rate))
 
-    # Batch the pairs
+    # Compute normalization stats from this dataset
+    raw_rates = np.array([r for _, r in graph_rate_pairs])
+    rate_mean = float(np.mean(raw_rates))
+    rate_std = float(np.std(raw_rates))
+    print(f'Rate stats: mean={rate_mean:.1f}, std={rate_std:.1f}')
+
+    # Normalize and batch
     batched_dataset = []
     for i in range(0, len(graph_rate_pairs), batch_size):
         batch_pairs = graph_rate_pairs[i:i + batch_size]
         graphs, rates = zip(*batch_pairs)
         batch = make_batch(list(graphs))
-        rates_array = jnp.asarray(list(rates) + [0.0])  # Padding rate
+        rates_norm = [(r - rate_mean) / rate_std for r in rates]
+        rates_array = jnp.asarray(rates_norm + [0.0])
         batched_dataset.append((batch, rates_array))
 
     save_dataset(batched_dataset, save_path)
@@ -218,12 +210,10 @@ if __name__ == '__main__':
     generate_dataset(
         seed=42,
         n_realizations=1000,
-        n_configurations=30,
         save_path='datasets/random_dataset.pkl.lz4'
     )
     generate_dataset(
         seed=43,
         n_realizations=200,
-        n_configurations=30,
         save_path='datasets/random_val_dataset.pkl.lz4'
     )

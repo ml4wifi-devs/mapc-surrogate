@@ -10,6 +10,7 @@ import numpy as np
 import optax
 import orbax.checkpoint as ocp
 import wandb
+from scipy.stats import spearmanr
 from omegaconf import OmegaConf
 
 from mapc_surrogate.dataset import load_dataset
@@ -128,7 +129,7 @@ def main(cfg):
             ss_res = np.sum((targets - preds) ** 2)
             ss_tot = np.sum((targets - np.mean(targets)) ** 2)
             r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
-            correlation = float(np.corrcoef(preds, targets)[0, 1]) if len(preds) > 1 else 0.0
+            spearman_r = float(spearmanr(preds, targets).statistic) if len(preds) > 1 else 0.0
 
             calib_1sigma = float(np.mean(errors < 1.0 * stds))
             calib_2sigma = float(np.mean(errors < 2.0 * stds))
@@ -138,7 +139,7 @@ def main(cfg):
             log_dict['val/mse'] = mse
             log_dict['val/mae'] = mae
             log_dict['val/r2'] = r2
-            log_dict['val/correlation'] = correlation
+            log_dict['val/spearman_r'] = spearman_r
             log_dict['val/eff_components'] = total_eff_components / cfg.train.val.n_steps
             log_dict['val/calib_1sigma'] = calib_1sigma
             log_dict['val/calib_2sigma'] = calib_2sigma

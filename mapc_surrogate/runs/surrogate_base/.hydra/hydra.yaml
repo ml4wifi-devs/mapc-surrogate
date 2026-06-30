@@ -127,20 +127,20 @@ hydra:
         item_sep: ','
         exclude_keys: []
   runtime:
-    version: 1.3.2
+    version: 1.3.3
     version_base: '1.3'
-    cwd: /net/storage/pr3/plgrid/plggml4wifi/mapc-surrogate/mapc_surrogate
+    cwd: /home/wojnar/mapc-surrogate/mapc_surrogate
     config_sources:
     - path: hydra.conf
       schema: pkg
       provider: hydra
-    - path: /net/storage/pr3/plgrid/plggml4wifi/mapc-surrogate/mapc_surrogate/configs
+    - path: /home/wojnar/mapc-surrogate/mapc_surrogate/configs
       schema: file
       provider: main
     - path: ''
       schema: structured
       provider: schema
-    output_dir: /net/storage/pr3/plgrid/plggml4wifi/mapc-surrogate/mapc_surrogate/runs/surrogate_base/2026-03-18/14-27-33
+    output_dir: /home/wojnar/mapc-surrogate/mapc_surrogate/runs/surrogate_base/2026-06-30/22-29-08
     choices:
       train: base
       optimizer: base

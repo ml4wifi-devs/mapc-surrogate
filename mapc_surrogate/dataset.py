@@ -171,7 +171,8 @@ def draw_history(key, dataset):
     return dataset
 
 
-def generate_dataset(seed, n_realizations, save_path, batch_size=32):
+def generate_dataset(seed, n_realizations, save_path, batch_size=16,
+                     rate_mean=None, rate_std=None):
     key = jax.random.PRNGKey(seed)
     scenarios_key, configurations_key = jax.random.split(key)
 
@@ -186,11 +187,16 @@ def generate_dataset(seed, n_realizations, save_path, batch_size=32):
             graph = nx_to_jraph(G)
             graph_rate_pairs.append((graph, rate))
 
-    # Compute normalization stats from this dataset
+    # Compute normalization stats from data if not provided (train set)
     raw_rates = np.array([r for _, r in graph_rate_pairs])
-    rate_mean = float(np.mean(raw_rates))
-    rate_std = float(np.std(raw_rates))
+    if rate_mean is None or rate_std is None:
+        rate_mean = float(np.mean(raw_rates))
+        rate_std = float(np.std(raw_rates))
     print(f'Rate stats: mean={rate_mean:.1f}, std={rate_std:.1f}')
+
+    # Shuffle before batching so batches contain mixed scenarios
+    rng = np.random.default_rng(seed)
+    rng.shuffle(graph_rate_pairs)
 
     # Normalize and batch
     batched_dataset = []
@@ -204,10 +210,11 @@ def generate_dataset(seed, n_realizations, save_path, batch_size=32):
 
     save_dataset(batched_dataset, save_path)
     print(f'Saved {len(graph_rate_pairs)} samples in {len(batched_dataset)} batches to {save_path}')
+    return rate_mean, rate_std
 
 
 if __name__ == '__main__':
-    generate_dataset(
+    rate_mean, rate_std = generate_dataset(
         seed=42,
         n_realizations=1000,
         save_path='datasets/random_dataset.pkl.lz4'
@@ -215,5 +222,7 @@ if __name__ == '__main__':
     generate_dataset(
         seed=43,
         n_realizations=200,
-        save_path='datasets/random_val_dataset.pkl.lz4'
+        save_path='datasets/random_val_dataset.pkl.lz4',
+        rate_mean=rate_mean,
+        rate_std=rate_std
     )

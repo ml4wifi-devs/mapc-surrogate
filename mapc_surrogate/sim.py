@@ -101,6 +101,16 @@ def select_cover_stations(scores, candidate_txs, associations):
     return selected
 
 
+def eval_candidate(scenario, scenario_key, eval_tx, ideal_mcs):
+    if ideal_mcs:
+        tx_mat, tx_power, _ = eval_tx
+        data_rate, _, internals = scenario(scenario_key, tx_mat, tx_power, return_internals=True)
+        eval_tx = (tx_mat, tx_power, internals.mcs)
+    else:
+        data_rate, _, internals = scenario(scenario_key, *eval_tx, return_internals=True)
+    return data_rate.item(), internals, eval_tx
+
+
 def run_scenario(
         scenario, n_steps, n_samples_eval, seed, ideal_mcs,
         surrogate_fn, batch_size, use_simulator, random_baseline, top_k,
@@ -127,47 +137,47 @@ def run_scenario(
                 graph = nx_to_jraph(G)
                 candidate_graphs.append(graph)
 
+        key, eval_key = jax.random.split(key)
+
         # Score candidates
         if random_baseline:
             perm_key = candidate_sim_keys[0]
             random_indices = jax.random.permutation(perm_key, n_samples_eval)[:top_k]
             selected = [(int(idx), 0.0) for idx in random_indices]
-        else:
-            all_scores = []
-
-            if use_simulator:
-                for i, tx in enumerate(candidate_txs):
-                    data_rate, _, _ = scenario(candidate_sim_keys[i], *tx, return_internals=True)
-                    all_scores.append(data_rate.item())
+            oracle_evals = None
+        elif use_simulator:
+            oracle_evals = [eval_candidate(scenario, eval_key, tx, ideal_mcs) for tx in candidate_txs]
+            scores_array = np.asarray([e[0] for e in oracle_evals], dtype=np.float64)
+            if selection == 'cover':
+                selected = select_cover_stations(scores_array, candidate_txs, scenario.associations)
             else:
-                for i in range(0, len(candidate_graphs), batch_size):
-                    batch_graphs = candidate_graphs[i:i + batch_size]
-                    batch = make_batch(batch_graphs)
-                    logits, means, scales = surrogate_fn(batch)
-                    _, scores = select_best_configuration(logits, means, scales)
-                    all_scores.extend(scores.tolist())
+                selected = select_top_k(scores_array, top_k)
+        else:
+            oracle_evals = None
+            all_scores = []
+            for i in range(0, len(candidate_graphs), batch_size):
+                batch_graphs = candidate_graphs[i:i + batch_size]
+                batch = make_batch(batch_graphs)
+                logits, means, scales = surrogate_fn(batch)
+                _, scores = select_best_configuration(logits, means, scales)
+                all_scores.extend(scores.tolist())
 
             scores_array = np.asarray(all_scores[:n_samples_eval], dtype=np.float64)
             if selection == 'cover':
                 selected = select_cover_stations(scores_array, candidate_txs, scenario.associations)
             else:
                 selected = select_top_k(scores_array, top_k)
+
         results = []
-
         for idx, score in selected:
-            eval_tx = candidate_txs[idx]
-            key, scenario_key = jax.random.split(key)
-
-            if ideal_mcs:
-                tx_mat, tx_power, _ = eval_tx
-                data_rate, _, internals = scenario(scenario_key, tx_mat, tx_power, return_internals=True)
-                eval_tx = (tx_mat, tx_power, internals.mcs)
+            if oracle_evals is not None:
+                data_rate, internals, eval_tx = oracle_evals[idx]
             else:
-                data_rate, _, internals = scenario(scenario_key, *eval_tx, return_internals=True)
+                data_rate, internals, eval_tx = eval_candidate(scenario, eval_key, candidate_txs[idx], ideal_mcs)
 
             results.append({
                 'score': score,
-                'data_rate': data_rate.item(),
+                'data_rate': data_rate,
                 'action': tx_to_action(scenario.associations, internals, *eval_tx)
             })
 

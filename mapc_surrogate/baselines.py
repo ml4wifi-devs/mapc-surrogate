@@ -19,12 +19,13 @@ from mapc_dcf.nodes import AccessPoint
 from mapc_mab import MapcAgentFactory
 from mapc_optimal import OptimizationType, Solver, positions_to_path_loss
 from mapc_research.envs.scenario_impl import *
-from mapc_sim.constants import NOISE_FLOOR, REFERENCE_DISTANCE, DATA_RATES, MEAN_SNRS, STD_SNR
+from mapc_sim.constants import DEFAULT_NAKAGAMI_M, DEFAULT_NAKAGAMI_SIGMA, \
+    NOISE_FLOOR, REFERENCE_DISTANCE, DATA_RATES, MEAN_SNRS, STD_SNR
 from mapc_sim.utils import nakagami_fading_db
 from reinforced_lib.agents.mab import UCB
 from tqdm import tqdm, trange
 
-from mapc_surrogate.sim import SCENARIO_SETS, SWEEP_SCENARIOS, eval_candidate, tx_to_action
+from mapc_surrogate.sim import SCENARIO_SETS, eval_candidate, tx_to_action
 
 NOISE_LIN = 10 ** (NOISE_FLOOR / 10)
 
@@ -108,7 +109,7 @@ def flatten_scenarios(scenarios):
 def run_dcf_single(key, run, scenario, sim_time, logger):
     key, key_channel = jax.random.split(key)
     des_env = simpy.Environment()
-    channel = Channel(key_channel, False, scenario.channel_width, scenario.pos, scenario.walls)
+    channel = Channel(key_channel, False, scenario.channel_width, scenario.pos, scenario.walls, nakagami_m=DEFAULT_NAKAGAMI_M, sigma=DEFAULT_NAKAGAMI_SIGMA)
     aps: dict[int, AccessPoint] = {}
 
     for ap in scenario.associations:

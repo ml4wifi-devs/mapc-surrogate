@@ -1,7 +1,5 @@
-import os
-os.environ['JAX_ENABLE_X64'] = 'True'
-
 import json
+import os
 from argparse import ArgumentParser
 from itertools import chain
 from math import erf, sqrt
